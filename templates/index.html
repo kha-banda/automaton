@@ -1,0 +1,335 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editor de Autómatas</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.21.1/cytoscape.min.js"></script>
+  <style>
+    #cy {
+      width: 100%;
+      height: 500px;
+      border: 1px solid #ccc;
+    }
+    .context-menu {
+      position: absolute;
+      background: #fff;
+      border: 1px solid #ccc;
+      z-index: 1000;
+      padding: 10px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    .context-menu ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .context-menu ul li {
+      padding: 5px;
+      cursor: pointer;
+    }
+    .context-menu ul li:hover {
+      background: #f0f0f0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container mt-5">
+    <h1 class="text-center">Editor de Autómatas</h1>
+    <div id="cy" class="border mt-3" style="width: 100%; height: 500px;"></div>
+    <div class="mt-3 d-flex flex-wrap gap-2">
+      <button id="add-node" class="btn btn-primary">Añadir Estado</button>
+      <button id="add-edge" class="btn btn-secondary" style="display: none;">Añadir Transición</button>
+      <button id="delete-element" class="btn btn-danger" style="display: none;">Eliminar Selección</button>
+      <button id="set-initial" class="btn btn-success" style="display: none;">Definir Estado Inicial</button>
+      <button id="set-final" class="btn btn-warning" style="display: none;">Definir Estado Final</button>
+      <button id="download" class="btn btn-info">Convertir a AFD Minimizado</button>
+    </div>
+    <div id="dfa-section" class="mt-4">
+      <h3>Resultado del AFD</h3>
+      <div id="transition-table-container"></div>
+    </div>
+  </div>
+
+  <script>
+    // Inicialización de Cytoscape
+    const cy = cytoscape({
+      container: document.getElementById('cy'),
+      elements: [],
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'label': 'data(id)',
+            'text-valign': 'center',
+            'background-color': '#007bff',
+            'color': '#fff',
+            'width': '50px',
+            'height': '50px',
+          },
+        },
+        {
+          selector: 'edge',
+          style: {
+            'curve-style': 'bezier',
+            'target-arrow-shape': 'triangle',
+            'label': 'data(label)',
+            'line-color': '#666',
+            'target-arrow-color': '#666',
+          },
+        },
+        {
+          selector: ':selected',
+          style: {
+            'background-color': '#ff0000',
+            'line-color': '#ff0000',
+            'target-arrow-color': '#ff0000',
+          },
+        },
+      ],
+      layout: { name: 'grid' },
+    });
+
+    // Variables globales
+    let creatingEdge = false;
+    let edgeSource = null;
+
+    // Agregar nodo
+    document.getElementById('add-node').addEventListener('click', () => {
+      const id = `q${cy.nodes().length}`;
+      cy.add({ group: 'nodes', data: { id }, position: { x: 100, y: 100 } });
+    });
+
+    // Eliminar elemento seleccionado
+    document.getElementById('delete-element').addEventListener('click', () => {
+      const selected = cy.$(':selected');
+      if (selected.length > 0) {
+        if (confirm("¿Estás seguro de eliminar el elemento seleccionado?")) {
+          selected.remove();
+        }
+      } else {
+        alert("Selecciona un elemento para eliminar.");
+      }
+    });
+
+    // Crear transiciones entre nodos
+    cy.on('tap', 'node', (event) => {
+      const node = event.target;
+
+      if (creatingEdge) {
+        const edgeLabel = prompt('Etiqueta de la transición:');
+        if (edgeLabel) {
+          cy.add({
+            group: 'edges',
+            data: { source: edgeSource, target: node.id(), label: edgeLabel },
+          });
+        }
+        creatingEdge = false;
+        edgeSource = null;
+      } else {
+        edgeSource = node.id();
+        creatingEdge = true;
+        alert(`Nodo origen: ${edgeSource}. Haz clic en el nodo destino.`);
+      }
+    });
+
+    // Configuración de estados iniciales y finales desde el menú contextual
+    cy.on('cxttap', 'node', (event) => {
+      const node = event.target;
+      const menuHTML = `
+        <ul>
+          <li onclick="setInitial('${node.id()}')">Establecer como inicial</li>
+          <li onclick="setFinal('${node.id()}')">Establecer como final</li>
+          <li onclick="deleteElement('${node.id()}')">Eliminar</li>
+        </ul>`;
+      showContextMenu(event.renderedPosition, menuHTML);
+    });
+
+    cy.on('cxttap', 'edge', (event) => {
+      const edge = event.target;
+      const menuHTML = `
+        <ul>
+          <li onclick="deleteElement('${edge.id()}')">Eliminar</li>
+        </ul>`;
+      showContextMenu(event.renderedPosition, menuHTML);
+    });
+
+    // Mostrar menú contextual
+    function showContextMenu(position, menuHTML) {
+      const menu = document.createElement('div');
+      menu.className = 'context-menu';
+      menu.innerHTML = menuHTML;
+      menu.style.left = `${position.x}px`;
+      menu.style.top = `${position.y}px`;
+      document.body.appendChild(menu);
+
+      document.addEventListener('click', () => menu.remove(), { once: true });
+    }
+
+    // Configurar nodo como inicial
+    function setInitial(nodeId) {
+      cy.nodes().forEach(node => node.data('initial', false));
+      const node = cy.getElementById(nodeId);
+      node.data('initial', true);
+      node.style('background-color', '#28a745'); // Verde
+    }
+
+    // Configurar nodo como final
+    function setFinal(nodeId) {
+      const node = cy.getElementById(nodeId);
+      node.data('final', true);
+      node.style('background-color', '#ffc107'); // Amarillo
+    }
+
+    // Eliminar elemento
+    function deleteElement(elementId) {
+      const element = cy.getElementById(elementId);
+      if (element && confirm("¿Estás seguro de eliminar el elemento seleccionado?")) {
+        element.remove();
+      }
+    }
+
+    async function convertNFA() {
+  const nfa = {
+    states: cy.nodes().map(node => node.id()),
+    input_symbols: [...new Set(cy.edges().map(edge => edge.data('label')))],
+    transitions: cy.edges().reduce((acc, edge) => {
+      const { source, target, label } = edge.data();
+      acc[source] = acc[source] || {};
+      acc[source][label] = acc[source][label] || [];
+      acc[source][label].push(target);
+      return acc;
+    }, {}),
+    initial_state: cy.nodes().filter(node => node.data('initial')).map(node => node.id())[0],
+    final_states: cy.nodes().filter(node => node.data('final')).map(node => node.id()),
+  };
+
+  try {
+    const response = await fetch('/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nfa }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      alert(`Error: ${errorData.error}`);
+      return;
+    }
+
+    const { dfa } = await response.json();
+    console.log('DFA recibido del backend:', dfa);
+    drawTransitionTable(dfa);
+    drawDFA(dfa)
+    alert('DFA generado y grafo actualizado.');
+  } catch (error) {
+    console.error('Error al convertir el NFA:', error);
+    alert('Hubo un error al convertir el NFA. Consulta la consola para más detalles.');
+  }
+}
+function drawDFA(dfa) {
+  // Limpiar el grafo actual
+  cy.elements().remove();
+
+  // Agregar los estados del DFA
+  dfa.states.forEach(state => {
+    const isInitial = state === dfa.initial_state;
+    const isFinal = dfa.final_states.includes(state);
+
+    // Estilo para el estado inicial
+    const initialStyle = {
+      'border-width': 3,
+      'background-color': '#28a745'
+    };
+
+    // Estilo para los estados finales
+    const finalStyle = {
+      'shape': 'double-circle',
+      'background-color': '#ffc107',
+    };
+
+    // Combinar estilos si un estado es inicial y final
+    const nodeStyle = {
+      ...(isInitial && initialStyle),
+      ...(isFinal && finalStyle),
+    };
+
+    // Agregar el nodo con los estilos aplicados
+    cy.add({
+      group: 'nodes',
+      data: {
+        id: state,
+        label: `${state}${isInitial ? ' (Inicial)' : ''}${isFinal ? ' (Final)' : ''}`,
+      },
+      style: nodeStyle,
+    });
+  });
+
+  // Agregar las transiciones del DFA
+  for (const [source, transitions] of Object.entries(dfa.transitions)) {
+    for (const [symbol, target] of Object.entries(transitions)) {
+      cy.add({
+        group: 'edges',
+        data: {
+          id: `${source}-${symbol}-${target}`,
+          source: source,
+          target: target,
+          label: symbol,
+        },
+      });
+    }
+  }
+
+  // Aplicar un layout para organizar los nodos
+  cy.layout({ name: 'breadthfirst', directed: true }).run();
+}
+function drawTransitionTable(dfa) {
+  // Crear la tabla
+  const table = document.createElement('table');
+  table.className = 'table table-bordered table-hover table-striped'; // Clases de Bootstrap
+  table.style.fontSize = '18px'; // Tamaño de letra más grande
+
+  // Crear el encabezado de la tabla
+  const thead = document.createElement('thead');
+  thead.innerHTML = `
+    <tr>
+      <th class="text-center">Estado</th>
+      ${dfa.input_symbols.map(symbol => `<th class="text-center">${symbol}</th>`).join('')}
+    </tr>
+  `;
+  table.appendChild(thead);
+
+  // Crear el cuerpo de la tabla
+  const tbody = document.createElement('tbody');
+  tbody.innerHTML = dfa.states.map(state => `
+    <tr>
+      <td class="text-center">
+        ${state}
+        ${state === dfa.initial_state ? '<span class="badge bg-primary">Inicial</span>' : ''}
+        ${dfa.final_states.includes(state) ? '<span class="badge bg-success">Final</span>' : ''}
+      </td>
+      ${dfa.input_symbols.map(symbol => `
+        <td class="text-center">${dfa.transitions[state]?.[symbol]}</td>
+      `).join('')}
+    </tr>
+  `).join('');
+  table.appendChild(tbody);
+
+  // Limpiar el contenedor anterior (si existe)
+  const container = document.getElementById('transition-table-container');
+  if (container) {
+    container.innerHTML = ''; // Limpiar el contenido previo
+    container.appendChild(table); // Agregar la nueva tabla
+  } else {
+    console.error('El contenedor para la tabla de transiciones no existe.');
+  }
+}
+  // Conectar el botón de conversión
+  document.getElementById('download').addEventListener('click', convertNFA);
+  </script>
+ 
+    
+</body>
+</html>
