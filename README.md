@@ -115,3 +115,9 @@ Módulo de Procesamiento (Automata-lib)
       Carga y Validación del NFA: Comprueba que los datos del autómata sean correctos.
       Conversión de NFA a DFA: Usa algoritmos estándar de teoría de autómatas.
       Minimización del DFA: Reduce el número de estados del autómata resultante.
+
+
+
+
+
+contactanos a Dariocasoca@gmail.com
